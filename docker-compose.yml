@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: doctor_appointment_db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-Doctor_Appointment}
+      MYSQL_USER: ${DB_USER:-doctor_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-doctor_password}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - doctor_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${DB_USER:-doctor_user}", "-p${DB_PASSWORD:-doctor_password}"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+    restart: unless-stopped
+
+  # Node.js Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: doctor_appointment_app
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      DB_HOST: mysql
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-doctor_user}
+      DB_PASSWORD: ${DB_PASSWORD:-doctor_password}
+      DB_NAME: ${DB_NAME:-Doctor_Appointment}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your_secret_key}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your_encryption_key}
+      EMAIL_SERVICE: ${EMAIL_SERVICE:-gmail}
+      EMAIL_USER: ${EMAIL_USER:-your_email@gmail.com}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-your_password}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@doctorappointment.com}
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+      - ./src:/app/src
+    networks:
+      - doctor_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 404) throw new Error(r.statusCode)})"]
+      timeout: 3s
+      retries: 3
+      interval: 30s
+      start_period: 5s
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  doctor_network:
+    driver: bridge
